@@ -167,15 +167,27 @@ class VibratingScreen:
         passing = passing_fraction(undersize_t, total_t)
         if passing > 100.0:
             raise InvalidRequest("a sample cannot pass more mass than it holds", passing_pct=passing)
-        undersize = judge(f"{self.unit}.product", passing, self.undersize_limit, moment)
+        oversize_pct = round(100.0 - passing, 3)
+        subject = f"{self.unit}.product"
+        undersize = judge(subject, passing, self.undersize_limit, moment)
+        oversize = judge(subject, oversize_pct, self.oversize_limit, moment)
+        sample_t = round(float(total_t), 4)
         self._verdicts.record_threshold(
             self.unit,
             undersize,
             moment,
             actor,
-            sample_t=round(float(total_t), 4),
+            sample_t=sample_t,
         )
-        return {"undersize": undersize.as_dict()}
+        self._verdicts.record_threshold(
+            self.unit,
+            oversize,
+            moment,
+            actor,
+            sample_t=sample_t,
+            passing_pct=passing,
+        )
+        return {"undersize": undersize.as_dict(), "oversize": oversize.as_dict()}
 
     def _write(self, state: ScreenState, moment: datetime) -> None:
         self._store.save(self.doc_id, state.as_dict(), moment)
