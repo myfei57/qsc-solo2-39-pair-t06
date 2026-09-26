@@ -12,6 +12,7 @@ from ..errors import InvalidRequest
 from ..store.documents import DocumentStore
 from ..units import specific_throughput
 from ..verdict.log import VerdictLog
+from ..verdict.threshold import Limit, judge
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class DeckMonitor:
         self.width_m = float(width_m)
         self.length_m = float(length_m)
         self.doc_id = f"screen.{unit}.deck.{deck_id}"
+        self.utilisation_limit = Limit("screen.deck.utilisation", 0.0, 100.0)
 
     def duty(self, tonnes_per_hour: float, moment: datetime, actor: str) -> dict[str, Any]:
         """Record one duty reading and judge the share of the rating it uses."""
@@ -89,7 +91,15 @@ class DeckMonitor:
             at=stamp(moment),
         )
         self._store.save(self.doc_id, load.as_dict(), moment)
-        return {"load": load.as_dict()}
+        verdict = judge(f"{self.unit}.deck.{self.deck}", load.utilisation_pct, self.utilisation_limit, moment)
+        self._verdicts.record_threshold(
+            self.unit,
+            verdict,
+            moment,
+            actor,
+            tonnes_per_hour=load.tonnes_per_hour,
+        )
+        return {"load": load.as_dict(), "verdict": verdict.as_dict()}
 
     def state(self) -> DeckLoad | None:
         document = self._store.try_load(self.doc_id)
